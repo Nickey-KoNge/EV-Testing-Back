@@ -51,8 +51,13 @@ export class MasterCompanyStaffController {
     return this.masterCompanyStaffService.findOne(id);
   }
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateStaffDto: UpdateStaffDto) {
-    return this.masterCompanyStaffService.update(id, updateStaffDto);
+  @UseInterceptors(FileInterceptor('file'))
+  update(
+    @Param('id') id: string,
+    @Body() updateStaffDto: UpdateStaffDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.masterCompanyStaffService.update(id, updateStaffDto, file);
   }
 
   @Delete(':id')

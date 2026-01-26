@@ -5,39 +5,23 @@ import { Repository, In, ILike } from 'typeorm';
 import { Staff } from './entities/staff.entity';
 import { CreateStaffDto } from './dtos/create.staff.dto';
 import { UpdateStaffDto } from './dtos/update.staff.dto';
-import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+// import * as path from 'path';
+// import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
-import { ConfigService } from '@nestjs/config';
+// import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+// import { ConfigService } from '@nestjs/config';
+import { OpService } from 'src/common/service/op.service';
+import { ImgFileService } from 'src/common/service/imgfile.service';
 
 @Injectable()
 export class MasterCompanyStaffService {
-  private s3Client: S3Client;
-  private readonly bucketName: string;
-
   constructor(
     @InjectRepository(Staff)
     private readonly staffRepository: Repository<Staff>,
-    private readonly configService: ConfigService,
-  ) {
-    // We use bracket notation to bypass the linter's 'unsafe-call' if it can't resolve the type
-    const config = this.configService;
+    private readonly imgFileService: ImgFileService,
+    private readonly opService: OpService,
+  ) {}
 
-    this.bucketName = config['get']<string>('AWS_S3_BUCKET_NAME') || '';
-
-    this.s3Client = new S3Client({
-      region: config['get']<string>('AWS_S3_REGION') || '',
-      credentials: {
-        accessKeyId: config['get']<string>('AWS_S3_ACCESS_KEY') || '',
-        secretAccessKey: config['get']<string>('AWS_S3_SECRET_KEY') || '',
-      },
-    });
-  }
   async findActive(): Promise<Staff[]> {
     return await this.staffRepository.find({
       where: { status: ILike('Active') },
@@ -61,7 +45,7 @@ export class MasterCompanyStaffService {
 
   //Basic CRUD Code
 
-  // Create
+  // Create and save on local db
   // async create(
   //   createStaffDto: CreateStaffDto,
   //   file: Express.Multer.File,
@@ -104,39 +88,15 @@ export class MasterCompanyStaffService {
   ): Promise<Staff> {
     if (!file) throw new Error('No file uploaded');
 
-    // Safe property access for Multer
-    const originalName = file['originalname'];
-    const fileBuffer = file['buffer'];
-    const mimetype = file['mimetype'];
+    const imageUrl = await this.imgFileService.uploadFile(file, 'staff');
 
-    const fileName = `staff/${uuidv4()}${path.extname(originalName)}`;
+    const hashedPassword = await bcrypt.hash(createStaffDto.password, 10);
 
-    await this.s3Client.send(
-      new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: fileName,
-        Body: fileBuffer,
-        ContentType: mimetype,
-      }),
-    );
-
-    const config = this.configService;
-    const region = config['get']<string>('AWS_S3_REGION') as string;
-    const imageUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${fileName}`;
-
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(
-      createStaffDto.password,
-      saltRounds,
-    );
-
-    const staff = this.staffRepository.create({
+    return await this.opService.create<Staff>(this.staffRepository, {
       ...createStaffDto,
       image: imageUrl,
       password: hashedPassword,
     });
-
-    return await this.staffRepository.save(staff);
   }
 
   async findAll(
@@ -197,45 +157,38 @@ export class MasterCompanyStaffService {
   }
 
   // Update
-  async update(id: string, updateStaffDto: UpdateStaffDto): Promise<Staff> {
-    const staff = await this.findOne(id);
+  async update(
+    id: string,
+    updateStaffDto: UpdateStaffDto,
+    file?: Express.Multer.File,
+  ): Promise<Staff> {
+    if (!updateStaffDto) {
+      throw new Error('Update data (body) is missing');
+    }
+    if (file) {
+      const existingStaff = await this.findOne(id);
+      if (existingStaff.image) {
+        await this.imgFileService.deleteFile(existingStaff.image);
+      }
+
+      const newImageUrl = await this.imgFileService.uploadFile(file, 'staff');
+      updateStaffDto.image = newImageUrl;
+    }
 
     if (updateStaffDto.password) {
       updateStaffDto.password = await bcrypt.hash(updateStaffDto.password, 10);
     }
-    Object.assign(staff, updateStaffDto);
-    return await this.staffRepository.save(staff);
-  }
-  async remove(id: string): Promise<void> {
-    const staff = await this.findOne(id);
 
-    if (staff.image) {
-      // Extract the 'Key' (fileName) from the full URL
-      // Example URL: https://bucket.s3.region.amazonaws.com/staff/uuid.jpg
-      // We need just: staff/uuid.jpg
-      const fileKey = staff.image.split(
-        `${this.bucketName}.s3.${process.env.AWS_S3_REGION}.amazonaws.com/`,
-      )[1];
-
-      if (fileKey) {
-        await this.s3Client.send(
-          new DeleteObjectCommand({
-            Bucket: this.bucketName,
-            Key: fileKey,
-          }),
-        );
-      }
-    }
-
-    await this.staffRepository.remove(staff);
+    return await this.opService.update<Staff>(
+      this.staffRepository,
+      id,
+      updateStaffDto,
+    );
   }
   // Delete
-  // async remove(id: string): Promise<void> {
-  //   const staff = await this.findOne(id);
-  //   if (staff.image && fs.existsSync(staff.image)) {
-  //     fs.unlinkSync(staff.image);
-  //   }
-  //   await this.staffRepository.remove(staff);
-  // }
+  async remove(id: string): Promise<Staff> {
+    return await this.opService.remove<Staff>(this.staffRepository, id);
+  }
+
   //Basic CRUD Code
 }

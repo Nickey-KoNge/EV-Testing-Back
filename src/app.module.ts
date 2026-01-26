@@ -7,6 +7,7 @@ import { MasterCompanyBranchModule } from './modules/master-company/branch/maste
 import { MasterServiceRoleModule } from './modules/master-service/role/master-service.role.module';
 import { MasterCompanyStaffModule } from './modules/master-company/staff/master-company.staff.module';
 import { ConfigModule } from '@nestjs/config';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ConfigModule } from '@nestjs/config';
     MasterCompanyBranchModule,
     MasterCompanyStaffModule,
     MasterServiceRoleModule,
+    CommonModule,
   ],
 })
 export class AppModule {}
