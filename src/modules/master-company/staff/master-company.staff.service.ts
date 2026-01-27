@@ -5,11 +5,9 @@ import { Repository, In, ILike } from 'typeorm';
 import { Staff } from './entities/staff.entity';
 import { CreateStaffDto } from './dtos/create.staff.dto';
 import { UpdateStaffDto } from './dtos/update.staff.dto';
-// import * as path from 'path';
-// import { v4 as uuidv4 } from 'uuid';
+
 import * as bcrypt from 'bcrypt';
-// import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-// import { ConfigService } from '@nestjs/config';
+
 import { OpService } from 'src/common/service/op.service';
 import { ImgFileService } from 'src/common/service/imgfile.service';
 
@@ -101,7 +99,7 @@ export class MasterCompanyStaffService {
 
   async findAll(
     limit: number = 10,
-    page?: number,
+    page: number = 1,
     lastId?: string,
     lastCreatedAt?: string,
     search?: string,
@@ -118,12 +116,12 @@ export class MasterCompanyStaffService {
       );
     }
 
-    if (lastId && lastCreatedAt) {
+    if (lastId && lastCreatedAt && lastId !== 'undefined' && lastId !== '') {
       queryBuilder.andWhere(
         '(staff.created_at < :lastCreatedAt OR (staff.created_at = :lastCreatedAt AND branch.id < :lastId))',
         { lastCreatedAt, lastId },
       );
-    } else if (page && page > 1) {
+    } else {
       const skip = (page - 1) * limit;
       queryBuilder.skip(skip);
     }
@@ -138,21 +136,23 @@ export class MasterCompanyStaffService {
     if (search) {
       total = await queryBuilder.getCount();
     } else {
-      const result = await this.staffRepository.query<{ estimate: string }[]>(
-        `SELECT reltuples::bigint AS estimate 
+      total = await this.staffRepository.count();
+      if (total > 100) {
+        const result = await this.staffRepository.query<{ estimate: string }[]>(
+          `SELECT reltuples::bigint AS estimate 
           FROM pg_class c 
           JOIN pg_namespace n ON n.oid = c.relnamespace 
           WHERE n.nspname = 'master_company' 
           AND c.relname = 'staffs'`,
-      );
-      total = result && result.length > 0 ? Number(result[0].estimate) : 0;
+        );
+        total = result && result.length > 0 ? Number(result[0].estimate) : 0;
+      }
     }
-    console.log('staff data:', data);
 
     return {
       data,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
     };
   }
 
