@@ -41,45 +41,6 @@ export class MasterCompanyStaffService {
     return staff;
   }
 
-  //Basic CRUD Code
-
-  // Create and save on local db
-  // async create(
-  //   createStaffDto: CreateStaffDto,
-  //   file: Express.Multer.File,
-  // ): Promise<Staff> {
-  //   if (!file) {
-  //     throw new Error('No file uploaded');
-  //   }
-
-  //   const uploadDir = './uploads/staff-images';
-  //   if (!fs.existsSync(uploadDir)) {
-  //     fs.mkdirSync(uploadDir, { recursive: true });
-  //   }
-
-  //   const originalName = file['originalname'];
-  //   const fileBuffer = file['buffer'];
-
-  //   const fileName = `${uuidv4()}${path.extname(originalName)}`;
-  //   const filePath = path.join(uploadDir, fileName);
-
-  //   fs.writeFileSync(filePath, fileBuffer);
-  //   //password hashing
-  //   const saltRounds = 10;
-  //   const hashedPassword = await bcrypt.hash(
-  //     createStaffDto.password,
-  //     saltRounds,
-  //   );
-
-  //   const staff = this.staffRepository.create({
-  //     ...createStaffDto,
-  //     image: filePath,
-  //     password: hashedPassword,
-  //   });
-
-  //   return await this.staffRepository.save(staff);
-  // }
-
   async create(
     createStaffDto: CreateStaffDto,
     file: Express.Multer.File,
@@ -103,19 +64,55 @@ export class MasterCompanyStaffService {
     lastId?: string,
     lastCreatedAt?: string,
     search?: string,
+    startDate?: string,
+    endDate?: string,
+    roleId?: string,
+    branchId?: string,
   ) {
     const queryBuilder = this.staffRepository.createQueryBuilder('staff');
     queryBuilder
       .leftJoinAndSelect('staff.role', 'role')
       .leftJoinAndSelect('staff.branch', 'branch');
-
+    // ------ Searching Filter -----
     if (search) {
       queryBuilder.andWhere(
-        '(staff.staff_name ILike :search OR staff.address ILike :search OR role.role_name ILike :search OR branch.branch_name ILike :search)',
+        `(staff.staff_name ILike :search 
+            OR staff.address ILike :search 
+            OR staff.email ILike :search 
+            OR staff.phone ILike :search 
+            OR staff.position ILike :search
+            OR role.role_name ILike :search  
+            OR branch.branch_name ILike :search)`,
         { search: `%${search}%` },
       );
     }
+    // --- Role and Branch Filter -----
+    if (roleId) {
+      queryBuilder.andWhere('staff.role_id = :roleId', { roleId });
+    }
 
+    if (branchId) {
+      queryBuilder.andWhere('staff.branch_id = :branchId', { branchId });
+    }
+    // --- Date Range Filter ---
+    if (startDate && endDate) {
+      queryBuilder.andWhere(
+        'staff.created_at BETWEEN :startDate AND :endDate',
+        {
+          startDate: `${startDate} 00:00:00`,
+          endDate: `${endDate} 23:59:59`,
+        },
+      );
+    } else if (startDate) {
+      queryBuilder.andWhere('staff.created_at >= :startDate', {
+        startDate: `${startDate} 00:00:00`,
+      });
+    } else if (endDate) {
+      queryBuilder.andWhere('staff.created_at <= :endDate', {
+        endDate: `${endDate} 23:59:59`,
+      });
+    }
+    // ------ Pagination Logic --------
     if (lastId && lastCreatedAt && lastId !== 'undefined' && lastId !== '') {
       queryBuilder.andWhere(
         '(staff.created_at < :lastCreatedAt OR (staff.created_at = :lastCreatedAt AND branch.id < :lastId))',
@@ -131,6 +128,8 @@ export class MasterCompanyStaffService {
       .addOrderBy('staff.id', 'DESC')
       .take(limit)
       .getMany();
+
+    // -------- Total count Logic -------
 
     let total: number;
     if (search) {

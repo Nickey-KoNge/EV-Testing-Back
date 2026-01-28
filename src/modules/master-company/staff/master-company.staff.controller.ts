@@ -29,6 +29,10 @@ export class MasterCompanyStaffController {
     @Query('search') search?: string,
     @Query('listId') lastId?: string,
     @Query('lastCreatedAt') lastCreatedAt?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('roleId') roleId?: string,
+    @Query('branchId') branchId?: string,
   ) {
     return this.masterCompanyStaffService.findAll(
       limit,
@@ -36,6 +40,10 @@ export class MasterCompanyStaffController {
       lastId,
       lastCreatedAt,
       search,
+      startDate,
+      endDate,
+      roleId,
+      branchId,
     );
   }
   @Post()
