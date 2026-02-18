@@ -93,7 +93,6 @@ export class MasterServiceRoleService {
   }
   //Basic CRUD Code
 
-  //Filter data (Only Active Record)
   async findActive(): Promise<Role[]> {
     return await this.roleRepository.find({
       where: { status: ILike('Active') },
